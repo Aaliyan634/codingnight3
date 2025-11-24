@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sign in - Mini Social</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+
+  <!-- Header (like feed.html) -->
+  <header class="bg-gray-800/60 backdrop-blur sticky top-0 z-20">
+    <div class="max-w-4xl mx-auto flex items-center justify-between gap-4 p-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">MS</div>
+        <div>
+          <h1 class="text-lg font-semibold">Mini Social</h1>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="themeToggle" title="Toggle theme" aria-pressed="true" class="p-2 rounded-md bg-gray-700/40 hover:bg-gray-700">
+          <span id="themeIcon">🌗</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sign-in card -->
+  <main class="max-w-md mx-auto p-6">
+    <section class="bg-gray-800/60 p-6 rounded-xl shadow">
+      <h2 class="text-xl font-semibold mb-4">Sign in to Mini Social</h2>
+
+      <form id="signinForm" class="space-y-4">
+        <div>
+          <label class="text-sm text-gray-300">Email</label>
+          <input id="email" type="email" required placeholder="you@example.com" class="mt-1 w-full p-3 rounded-md bg-gray-900 border border-gray-700" />
+        </div>
+
+        <div>
+          <label class="text-sm text-gray-300">Password</label>
+          <input id="password" type="password" required placeholder="Your password" class="mt-1 w-full p-3 rounded-md bg-gray-900 border border-gray-700" />
+        </div>
+
+        <div class="flex gap-2">
+          <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded-md font-medium">Sign in</button>
+        </div>
+
+        <div class="text-sm text-gray-400 mt-2">
+          Don't have an account? <a href="signup.html" class="text-blue-400 hover:underline">Create one</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    // filepath: d:\A PROGRAMMING\Frontend\REACT\react class 1 installation\signin.html
+    const LOG_KEY = 'loggedUser';
+    const USERS_KEY = 'msa_users';
+    const themeToggle = document.getElementById('themeToggle');
+    const themeIcon = document.getElementById('themeIcon');
+
+    function loadUsers(){ try { return JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch(e){ return []; } }
+    function saveUsers(u){ localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
+
+    function updateThemeToggleUI() {
+      const isDark = document.documentElement.classList.contains('dark');
+      if (themeIcon) themeIcon.textContent = isDark ? '🌗' : '☀️';
+      if (themeToggle) themeToggle.setAttribute('aria-pressed', String(isDark));
+      if (themeToggle) themeToggle.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+    }
+    const applyTheme = (dark) => {
+      if (dark) document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+      localStorage.setItem('msa_theme_dark', dark ? '1' : '0');
+      updateThemeToggleUI();
+    };
+    (function initTheme(){
+      const saved = localStorage.getItem('msa_theme_dark');
+      if (saved === null) applyTheme(true);
+      else applyTheme(saved === '1');
+    })();
+    themeToggle.addEventListener('click', () => applyTheme(!document.documentElement.classList.contains('dark')));
+    themeToggle.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyTheme(!document.documentElement.classList.contains('dark')); } });
+
+    // signin logic
+    const form = document.getElementById('signinForm');
+    const emailEl = document.getElementById('email');
+    const passwordEl = document.getElementById('password');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = (emailEl.value || '').trim().toLowerCase();
+      const pwd = (passwordEl.value || '').trim();
+      if (!email || !pwd) { alert('Email aur password dono daliye'); return; }
+
+      const users = loadUsers();
+      const found = users.find(u => String(u.email).toLowerCase() === email);
+      if (!found) {
+        alert('Account nahi mila. Pehle signup karein.');
+        location.href = 'signup.html';
+        return;
+      }
+      if (!found.password || String(found.password) !== pwd) {
+        alert('Password galat hai.');
+        return;
+      }
+      // write logged user (omit password when storing loggedUser for UI)
+      const safeUser = { id: found.id, email: found.email, name: found.name || '' };
+      localStorage.setItem(LOG_KEY, JSON.stringify(safeUser));
+      location.href = 'feed.html';
+    });
+  </script>
+</body>
+</html>

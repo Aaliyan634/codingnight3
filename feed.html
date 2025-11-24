@@ -1,0 +1,448 @@
+
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Feed - Mini Social</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class'
+    }
+  </script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+  <header class="bg-gray-800/60 backdrop-blur sticky top-0 z-20">
+    <div class="max-w-4xl mx-auto flex items-center justify-between gap-4 p-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">MS</div>
+        <div>
+          <h1 class="text-lg font-semibold">Mini Social</h1>
+          <a href="file:///mnt/data/Coding Night – Social Media App Challenge (2).pdf" class="text-xs text-gray-400 hover:underline">Project PDF</a>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="userName" class="text-sm text-gray-200"></div>
+        <button id="themeToggle" title="Toggle theme" aria-pressed="true" class="p-2 rounded-md bg-gray-700/40 hover:bg-gray-700">
+          <span id="themeIcon">🌗</span>
+        </button>
+        <button id="logoutBtn" class="text-sm bg-red-600 hover:bg-red-700 px-3 py-1 rounded-md">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-4xl mx-auto p-4 grid gap-4 grid-cols-1 md:grid-cols-3">
+    <!-- Create post (left column on larger screens) -->
+    <section class="md:col-span-1 bg-gray-800/60 p-4 rounded-xl shadow">
+      <h2 class="text-lg font-semibold mb-2">Create Post</h2>
+
+      <textarea id="postText" rows="4" placeholder="Kya soch rahe ho?" class="w-full p-3 rounded-md bg-gray-900 border border-gray-700 resize-y"></textarea>
+
+      <input id="postImage" type="file" accept="image/*" class="mt-3 w-full p-2 rounded-md bg-gray-900 border border-gray-700 text-sm" />
+      <img id="postPreview" src="" alt="preview" class="mt-2 rounded-md max-h-40 w-full object-cover border border-gray-700 hidden" />
+
+      <div class="flex gap-2 mt-3">
+        <button id="postBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded-md font-medium">Post</button>
+        <button id="clearBtn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-md">Clear</button>
+      </div>
+
+      <div class="mt-4 text-sm text-gray-400">
+        <p>Note: Data browser ke <span class="text-gray-200 font-medium">localStorage</span> me save hota hai.</p>
+      </div>
+    </section>
+
+    <!-- Feed + tools (right column) -->
+    <section class="md:col-span-2 space-y-4">
+      <!-- Tools: search + sort -->
+      <div class="bg-gray-800/60 p-3 rounded-xl flex flex-col sm:flex-row gap-2 items-center">
+        <input id="searchInput" placeholder="Search posts..." class="flex-1 p-2 rounded-md bg-gray-900 border border-gray-700" />
+        <select id="sortSelect" class="p-2 rounded-md bg-gray-900 border border-gray-700">
+          <option value="latest">Latest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="mostLiked">Most Liked</option>
+        </select>
+        <div class="text-sm text-gray-400">Posts: <span id="postCount">0</span></div>
+      </div>
+
+      <!-- Posts container -->
+      <div id="postsContainer" class="space-y-4">
+        <!-- Posts will be injected here -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+
+    const $ = (s) => document.querySelector(s);
+    const $$ = (s) => Array.from(document.querySelectorAll(s));
+    const fmtDate = (iso) => new Date(iso).toLocaleString();
+
+    // Keys
+    const POSTS_KEY = 'msa_posts';
+    const LOG_KEY = 'loggedUser';
+
+    // Elements
+    const postBtn = $('#postBtn');
+    const clearBtn = $('#clearBtn');
+    const postText = $('#postText');
+    const postImage = $('#postImage');
+    const postPreview = $('#postPreview');
+    const postsContainer = $('#postsContainer');
+    const searchInput = $('#searchInput');
+    const sortSelect = $('#sortSelect');
+    const postCount = $('#postCount');
+    const userNameEl = $('#userName');
+    const logoutBtn = $('#logoutBtn');
+    const themeToggle = $('#themeToggle');
+    let selectedImageData = ''; // base64 data URL of chosen file (or empty)
+
+    // Auth check
+    const loggedUser = JSON.parse(localStorage.getItem(LOG_KEY) || 'null');
+    if (!loggedUser) {
+      alert('Pehle signin karo.');
+      location.href = 'signin.html';
+    } else {
+      // derive a friendly name from email when name isn't provided
+      function deriveNameFromEmail(email) {
+        if (!email) return '';
+        const user = String(email).split('@')[0] || '';
+        return user
+          .replace(/[\.\_\-]+/g, ' ')
+          .split(/\s+/)
+          .filter(Boolean)
+          .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(' ');
+      }
+      function getDisplayName(user) {
+        if (!user) return 'User';
+        if (user.name && String(user.name).trim()) return String(user.name).trim();
+        return deriveNameFromEmail(user.email) || user.email || 'User';
+      }
+      loggedUser.displayName = getDisplayName(loggedUser);
+      userNameEl.textContent = 'Hi, ' + loggedUser.displayName;
+    }
+
+    // Theme toggle (keeps preference in localStorage)
+    // update toggle button icon/label
+    const themeIcon = $('#themeIcon');
+    function updateThemeToggleUI() {
+      const isDark = document.documentElement.classList.contains('dark');
+      if (themeIcon) themeIcon.textContent = isDark ? '🌗' : '☀️';
+      if (themeToggle) themeToggle.setAttribute('aria-pressed', String(isDark));
+      if (themeToggle) themeToggle.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+    }
+
+    const applyTheme = (dark) => {
+      if (dark) document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+      localStorage.setItem('msa_theme_dark', dark ? '1' : '0');
+      updateThemeToggleUI();
+    };
+
+    (function initTheme(){
+      const saved = localStorage.getItem('msa_theme_dark');
+      if (saved === null) {
+        applyTheme(true); // default dark
+      } else {
+        applyTheme(saved === '1');
+      }
+    })();
+
+    // toggle on click or keyboard activation
+    themeToggle.addEventListener('click', () => {
+      applyTheme(!document.documentElement.classList.contains('dark'));
+    });
+    themeToggle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        applyTheme(!document.documentElement.classList.contains('dark'));
+      }
+    });
+
+    // Posts load/save
+    function loadPosts(){
+      try {
+        return JSON.parse(localStorage.getItem(POSTS_KEY) || '[]');
+      } catch(e){
+        return [];
+      }
+    }
+    function savePosts(posts){
+      localStorage.setItem(POSTS_KEY, JSON.stringify(posts));
+    }
+
+    // Render UI
+    function render(){
+      const q = (searchInput.value || '').trim().toLowerCase();
+      let posts = loadPosts();
+
+      // Search
+      if (q) {
+        posts = posts.filter(p => (p.text || '').toLowerCase().includes(q) || (p.userName || '').toLowerCase().includes(q));
+      }
+
+      // Sort
+      const sort = sortSelect.value;
+      if (sort === 'latest') posts.sort((a,b) => b.createdAt - a.createdAt);
+      else if (sort === 'oldest') posts.sort((a,b) => a.createdAt - b.createdAt);
+      else if (sort === 'mostLiked') posts.sort((a,b) => (b.likes || 0) - (a.likes || 0));
+
+      // Update count
+      postCount.textContent = posts.length;
+
+      // Clear container
+      postsContainer.innerHTML = '';
+      if (posts.length === 0) {
+        postsContainer.innerHTML = `<div class="p-4 rounded-xl bg-gray-800/40 text-gray-400">Koi post nahi mila.</div>`;
+        return;
+      }
+
+      // Render each post
+      posts.forEach(post => {
+        const liked = (post.likedBy || []).includes(loggedUser.id);
+
+        const card = document.createElement('article');
+        card.className = 'p-4 rounded-xl bg-gray-800/50 border border-gray-700';
+        card.innerHTML = `
+          <div class="flex justify-between items-start gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-yellow-400 flex items-center justify-center text-gray-900 font-semibold">
+                ${escapeInitials(post.userName)}
+              </div>
+              <div>
+                <div class="font-semibold">${escapeHtml(post.userName)}</div>
+                <div class="text-sm text-gray-400">${fmtDate(post.createdAt)}</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              ${post.userId === loggedUser.id ? '<button class="delete-btn text-sm bg-red-600/80 hover:bg-red-700 px-2 py-1 rounded-md">Delete</button>' : ''}
+              <button class="like-btn text-sm px-3 py-1 rounded-md ${liked ? 'bg-green-600' : 'bg-gray-700/60'}">${liked ? 'Liked' : 'Like'} (${post.likes||0})</button>
+            </div>
+          </div>
+
+          <div class="mt-3 text-gray-100">${escapeHtml(post.text)}</div>
+          ${post.image ? `<img src="${escapeAttr(post.image)}" alt="post image" class="mt-3 rounded-md max-h-72 w-full object-cover border border-gray-700" onerror="this.style.display='none'">` : ''}
+
+          <!-- Comments section -->
+          <div class="mt-4">
+            <div class="text-sm text-gray-400 mb-2 font-semibold">Comments (<span class="comments-count">${(post.comments||[]).length}</span>)</div>
+            <div class="space-y-2 comments-list">
+              <!-- comments injected here -->
+            </div>
+
+            <div class="flex gap-2 mt-3">
+              <input class="comment-input flex-1 p-2 rounded-md bg-gray-900 border border-gray-700 text-sm" placeholder="Add a comment..." />
+              <button class="add-comment-btn bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-md text-sm">Comment</button>
+            </div>
+          </div>
+        `;
+
+        // Like handler
+        const likeBtn = card.querySelector('.like-btn');
+        likeBtn.addEventListener('click', () => toggleLike(post.id));
+
+        // Delete handler
+        const delBtn = card.querySelector('.delete-btn');
+        if (delBtn) {
+          delBtn.addEventListener('click', () => {
+            if (!confirm('Kya aap is post ko delete karna chahte hain?')) return;
+            deletePost(post.id);
+          });
+        }
+
+        // Render existing comments
+        const commentsListEl = card.querySelector('.comments-list');
+        const commentsCountEl = card.querySelector('.comments-count');
+        (post.comments || []).forEach(c => {
+          const commentEl = document.createElement('div');
+          commentEl.className = 'p-2 rounded-md bg-gray-900/40 flex justify-between items-start gap-2';
+          commentEl.innerHTML = `
+            <div>
+              <div class="text-sm font-medium">${escapeHtml(c.userName)} <span class="text-xs text-gray-400">· ${fmtDate(c.createdAt)}</span></div>
+              <div class="text-sm text-gray-100 mt-1">${escapeHtml(c.text)}</div>
+            </div>
+            <div class="flex items-start gap-2">
+              <button class="comment-like-btn text-xs px-2 py-1 rounded-md ${((c.likedBy||[]).includes(loggedUser.id)) ? 'bg-green-600' : 'bg-gray-700/60'}">${((c.likedBy||[]).includes(loggedUser.id)) ? 'Liked' : 'Like'} (${c.likes||0})</button>
+              ${(c.userId === loggedUser.id || post.userId === loggedUser.id) ? '<button class="delete-comment-btn text-xs bg-red-600/80 hover:bg-red-700 px-2 py-1 rounded-md">Delete</button>' : ''}
+            </div>
+          `;
+          // like comment handler
+          const likeC = commentEl.querySelector('.comment-like-btn');
+          if (likeC) {
+            likeC.addEventListener('click', () => toggleCommentLike(post.id, c.id));
+          }
+          // delete comment handler
+          const delC = commentEl.querySelector('.delete-comment-btn');
+          if (delC) {
+            delC.addEventListener('click', () => {
+              if (!confirm('Delete this comment?')) return;
+              deleteComment(post.id, c.id);
+            });
+          }
+          commentsListEl.appendChild(commentEl);
+        });
+
+        // Wire up add comment
+        const commentInput = card.querySelector('.comment-input');
+        const addCommentBtn = card.querySelector('.add-comment-btn');
+        function doAddFromInput() {
+          if (!commentInput) return;
+          const v = (commentInput.value || '').trim();
+          if (!v) return;
+          addComment(post.id, v);
+        }
+        addCommentBtn.addEventListener('click', doAddFromInput);
+        commentInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') doAddFromInput(); });
+
+        postsContainer.appendChild(card);
+      });
+    }
+
+    // Utilities for safe HTML
+    function escapeHtml(str){
+      if (!str) return '';
+      return String(str)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'",'&#39;');
+    }
+    function escapeAttr(s){
+      return escapeHtml(s);
+    }
+    function escapeInitials(name){
+      if (!name) return 'U';
+      const parts = name.trim().split(/\s+/);
+      if (parts.length === 1) return (parts[0][0] || 'U').toUpperCase();
+      return ((parts[0][0]||'U') + (parts[1][0]||'')).toUpperCase();
+    }
+
+    // Actions
+    function addPost(text){
+      if (!text || !text.trim()) {
+        alert('Post ka text likho.');
+        return;
+      }
+      const posts = loadPosts();
+      const newPost = {
+        id: Date.now(),
+        userId: loggedUser.id,
+        userName: loggedUser.displayName || loggedUser.name || loggedUser.email,
+        text: text.trim(),
+        image: selectedImageData || '',
+        createdAt: Date.now(),
+        likes: 0,
+        likedBy: [],
+        comments: []
+      };
+      posts.push(newPost);
+      savePosts(posts);
+      // clear inputs + preview
+      postText.value = '';
+      if (postImage) postImage.value = '';
+      selectedImageData = '';
+      if (postPreview) { postPreview.src = ''; postPreview.classList.add('hidden'); }
+      render();
+    }
+
+    // Comments: add and delete
+    function addComment(postId, text) {
+      if (!text || !text.trim()) {
+        return;
+      }
+      const posts = loadPosts();
+      const idx = posts.findIndex(p => p.id === postId);
+      if (idx === -1) return;
+      posts[idx].comments = posts[idx].comments || [];
+      posts[idx].comments.push({
+        id: Date.now(),
+        userId: loggedUser.id,
+        userName: loggedUser.displayName || loggedUser.name || loggedUser.email,
+        text: text.trim(),
+        createdAt: Date.now(),
+        likes: 0,
+        likedBy: []
+      });
+      savePosts(posts);
+      render();
+    }
+
+    // Toggle like on a comment
+    function toggleCommentLike(postId, commentId) {
+      const posts = loadPosts();
+      const pIdx = posts.findIndex(p => p.id === postId);
+      if (pIdx === -1) return;
+      posts[pIdx].comments = posts[pIdx].comments || [];
+      const cIdx = posts[pIdx].comments.findIndex(c => c.id === commentId);
+      if (cIdx === -1) return;
+      const c = posts[pIdx].comments[cIdx];
+      c.likedBy = c.likedBy || [];
+      const has = c.likedBy.includes(loggedUser.id);
+      if (has) c.likedBy = c.likedBy.filter(id => id !== loggedUser.id);
+      else c.likedBy.push(loggedUser.id);
+      c.likes = c.likedBy.length;
+      posts[pIdx].comments[cIdx] = c;
+      savePosts(posts);
+      render();
+    }
+
+    // Toggle like on a post (restore post-like behavior)
+    function toggleLike(postId) {
+      const posts = loadPosts();
+      const idx = posts.findIndex(p => p.id === postId);
+      if (idx === -1) return;
+      const p = posts[idx];
+      p.likedBy = p.likedBy || [];
+      const has = p.likedBy.includes(loggedUser.id);
+      if (has) p.likedBy = p.likedBy.filter(id => id !== loggedUser.id);
+      else p.likedBy.push(loggedUser.id);
+      p.likes = p.likedBy.length;
+      posts[idx] = p;
+      savePosts(posts);
+      render();
+    }
+
+    // Events
+    postBtn.addEventListener('click', () => addPost(postText.value));
+    clearBtn.addEventListener('click', () => {
+      postText.value = '';
+      if (postImage) postImage.value = '';
+      selectedImageData = '';
+      if (postPreview) { postPreview.src = ''; postPreview.classList.add('hidden'); }
+    });
+
+    searchInput.addEventListener('input', () => render());
+    sortSelect.addEventListener('change', () => render());
+
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem(LOG_KEY);
+      location.href = 'signin.html';
+    });
+
+    // Init sample posts if none exist (optional, helpful for demo)
+    (function initDemo(){
+      const posts = loadPosts();
+      if (posts.length === 0) {
+        const sample = [
+          { id: Date.now() - 60000, userId: 'sys', userName: 'System', text: 'Welcome to Mini Social! Create your first post.', image:'', createdAt: Date.now() - 60000, likes:0, likedBy:[], comments: [] }
+        ];
+        savePosts(sample);
+      }
+    })();
+
+    // Initial render
+    render();
+
+    // Keep UI fresh if other tab changes posts
+    window.addEventListener('storage', (e) => {
+      if (e.key === POSTS_KEY || e.key === LOG_KEY) render();
+    });
+
+  </script>
+</body>
+</html>
